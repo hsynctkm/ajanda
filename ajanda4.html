@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Basit Ajanda Uygulaması</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  body {
+    font-family: 'Roboto Condensed', sans-serif;  
+    margin: 20px;
+    background: #f8f8f8;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  .column {
+    width: 30%;
+    min-height: 80vh;
+    background: #ffffff;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 10px;
+    box-sizing: border-box;
+    position: relative;
+  }
+
+  .column h2 {
+    text-align: center;
+    margin-bottom: 30px;
+    position: relative;
+  }
+
+  /* Toplu sil butonları */
+  .clear-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px 6px;
+  }
+
+  #mainColumn {
+    width: 35%;
+  }
+
+  .event-form {
+    background: #fff;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+  }
+  .event-form input, .event-form button, .event-form select {
+    width: 100%;
+    padding: 8px;
+    margin: 5px 0;
+    font-family: 'Roboto Condensed', sans-serif;
+  }
+
+  .event-list {
+    margin-top: 20px;
+  }
+
+  .event-item {
+    background: #fff;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    position: relative;
+  }
+
+  .event-actions button {
+    margin: 2px;
+    padding: 4px 8px;
+    font-size: 14px;
+    cursor: pointer;
+    font-family: 'Roboto Condensed', sans-serif;
+  }
+
+  /* Renk stilleri */
+  .event-item.red {
+    border-left: 6px solid #e53935;
+  }
+  .event-item.yellow {
+    border-left: 6px solid #fbc02d;
+  }
+  .event-item.green {
+    border-left: 6px solid #388e3c;
+  }
+
+  /* Tarih/saat küçük punto */
+  .event-datetime {
+    font-size: 0.85em;
+    color: #555;
+  }
+
+</style>
+</head>
+<body>
+  <div class="column" id="delayedColumn">
+    <h2>Ertelenenler
+      <button id="clearDelayedBtn" class="clear-btn" title="Tümünü Sil">🗑</button>
+    </h2>
+    <div id="delayedEventsContainer"></div>
+  </div>
+
+  <div class="column" id="mainColumn">
+    <h1 style="text-align:center;">Ajanda</h1>
+    <div class="event-form">
+      <h2>Etkinlik Ekle</h2>
+      <input type="text" id="eventTitle" placeholder="Etkinlik Başlığı" required />
+      <input type="datetime-local" id="eventDateTime" required />
+      <select id="eventColor">
+        <option value="red">Kırmızı (Öncelikli)</option>
+        <option value="yellow">Sarı (Orta)</option>
+        <option value="green">Yeşil (Düşük)</option>
+      </select>
+      <button id="addEventBtn">Ekle</button>
+    </div>
+
+    <div class="event-list">
+      <h2>Etkinliklerim</h2>
+      <div id="eventsContainer"></div>
+    </div>
+  </div>
+
+  <div class="column" id="completedColumn">
+    <h2>Tamamlananlar
+      <button id="clearCompletedBtn" class="clear-btn" title="Tümünü Sil">🗑</button>
+    </h2>
+    <div id="completedEventsContainer"></div>
+  </div>
+
+<script>
+  // Tarayıcı bildirim izni iste
+  if ("Notification" in window) {
+    Notification.requestPermission();
+  }
+
+  const addEventBtn = document.getElementById('addEventBtn');
+  const eventTitleInput = document.getElementById('eventTitle');
+  const eventDateTimeInput = document.getElementById('eventDateTime');
+  const eventColorSelect = document.getElementById('eventColor');
+
+  const eventsContainer = document.getElementById('eventsContainer');
+  const completedEventsContainer = document.getElementById('completedEventsContainer');
+  const delayedEventsContainer = document.getElementById('delayedEventsContainer');
+
+  const clearCompletedBtn = document.getElementById('clearCompletedBtn');
+  const clearDelayedBtn = document.getElementById('clearDelayedBtn');
+
+  let events = JSON.parse(localStorage.getItem('events')) || [];
+  let completedEvents = JSON.parse(localStorage.getItem('completedEvents')) || [];
+  let delayedEvents = JSON.parse(localStorage.getItem('delayedEvents')) || [];
+
+  function getColorPriority(color) {
+    // Kırmızı:1, Sarı:2, Yeşil:3 olarak öncelik verelim.
+    if(color === 'red') return 1;
+    if(color === 'yellow') return 2;
+    return 3; // green
+  }
+
+  // Dizileri renklere göre sırala
+  function sortByColor(arr) {
+    return arr.sort((a,b) => {
+      return getColorPriority(a.color) - getColorPriority(b.color);
+    });
+  }
+
+  function renderLists() {
+    // Her liste yazdırılmadan önce sırala
+    sortByColor(events);
+    sortByColor(completedEvents);
+    sortByColor(delayedEvents);
+
+    renderEvents();
+    renderCompletedEvents();
+    renderDelayedEvents();
+  }
+
+  function renderEvents() {
+    eventsContainer.innerHTML = '';
+    events.forEach((ev, index) => {
+      const div = document.createElement('div');
+      div.className = 'event-item ' + ev.color;
+      const eventDate = new Date(ev.datetime);
+      div.innerHTML = `
+        <strong>${index+1}. ${ev.title}</strong><br/>
+        <span class="event-datetime">Tarih/Saat: ${eventDate.toLocaleString()}</span><br/>
+        <a href="mailto:?subject=${encodeURIComponent('Hatırlatma: '+ev.title)}&body=${encodeURIComponent('Etkinlik Tarihi: '+ eventDate.toLocaleString())}">E-posta ile Gönder</a><br>
+        <div class="event-actions">
+          <button data-index="${index}" class="complete-btn">Tamamlandı</button>
+          <button data-index="${index}" class="delay-btn">Ertele</button>
+          <button data-index="${index}" class="delete-btn">Sil</button>
+        </div>
+      `;
+      eventsContainer.appendChild(div);
+    });
+
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = e.target.getAttribute('data-index');
+        events.splice(idx,1);
+        saveAll();
+        renderLists();
+      });
+    });
+
+    document.querySelectorAll('.complete-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = e.target.getAttribute('data-index');
+        const ev = events[idx];
+        completedEvents.push(ev);
+        events.splice(idx,1);
+        saveAll();
+        renderLists();
+      });
+    });
+
+    document.querySelectorAll('.delay-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = e.target.getAttribute('data-index');
+        const ev = events[idx];
+        delayedEvents.push(ev);
+        events.splice(idx,1);
+        saveAll();
+        renderLists();
+      });
+    });
+  }
+
+  function renderCompletedEvents() {
+    completedEventsContainer.innerHTML = '';
+    completedEvents.forEach((ev, index) => {
+      const div = document.createElement('div');
+      div.className = 'event-item ' + ev.color;
+      const eventDate = new Date(ev.datetime);
+      div.innerHTML = `
+        <strong>${index+1}. ${ev.title}</strong><br/>
+        <span class="event-datetime">Tamamlanma Tarihi: ${eventDate.toLocaleString()}</span><br/>
+        <div class="event-actions">
+          <button data-index="${index}" class="undo-btn">Geri Al</button>
+          <button data-index="${index}" class="remove-btn">Sil</button>
+        </div>
+      `;
+      completedEventsContainer.appendChild(div);
+    });
+
+    document.querySelectorAll('#completedEventsContainer .undo-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = e.target.getAttribute('data-index');
+        const ev = completedEvents[idx];
+        events.push(ev);
+        completedEvents.splice(idx,1);
+        saveAll();
+        renderLists();
+      });
+    });
+
+    document.querySelectorAll('#completedEventsContainer .remove-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = e.target.getAttribute('data-index');
+        completedEvents.splice(idx,1);
+        saveAll();
+        renderLists();
+      });
+    });
+  }
+
+  function renderDelayedEvents() {
+    delayedEventsContainer.innerHTML = '';
+    delayedEvents.forEach((ev, index) => {
+      const div = document.createElement('div');
+      div.className = 'event-item ' + ev.color;
+      const eventDate = new Date(ev.datetime);
+      div.innerHTML = `
+        <strong>${index+1}. ${ev.title}</strong><br/>
+        <span class="event-datetime">Ertelenen Etkinlik Tarihi: ${eventDate.toLocaleString()}</span><br/>
+        <div class="event-actions">
+          <button data-index="${index}" class="undo-btn">Geri Al</button>
+          <button data-index="${index}" class="remove-btn">Sil</button>
+        </div>
+      `;
+      delayedEventsContainer.appendChild(div);
+    });
+
+    document.querySelectorAll('#delayedEventsContainer .undo-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = e.target.getAttribute('data-index');
+        const ev = delayedEvents[idx];
+        events.push(ev);
+        delayedEvents.splice(idx,1);
+        saveAll();
+        renderLists();
+      });
+    });
+
+    document.querySelectorAll('#delayedEventsContainer .remove-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = e.target.getAttribute('data-index');
+        delayedEvents.splice(idx,1);
+        saveAll();
+        renderLists();
+      });
+    });
+  }
+
+  function saveAll() {
+    localStorage.setItem('events', JSON.stringify(events));
+    localStorage.setItem('completedEvents', JSON.stringify(completedEvents));
+    localStorage.setItem('delayedEvents', JSON.stringify(delayedEvents));
+  }
+
+  addEventBtn.addEventListener('click', () => {
+    const title = eventTitleInput.value.trim();
+    const datetime = eventDateTimeInput.value;
+    const color = eventColorSelect.value;
+    if(!title || !datetime) return;
+    events.push({title, datetime, color});
+    saveAll();
+    eventTitleInput.value = '';
+    eventDateTimeInput.value = '';
+    eventColorSelect.value = 'red';
+    renderLists();
+  });
+
+  // Toplu silme butonları
+  clearCompletedBtn.addEventListener('click', () => {
+    if(confirm("Tüm tamamlanan etkinlikleri silmek istediğinize emin misiniz?")) {
+      completedEvents = [];
+      saveAll();
+      renderLists();
+    }
+  });
+
+  clearDelayedBtn.addEventListener('click', () => {
+    if(confirm("Tüm ertelenen etkinlikleri silmek istediğinize emin misiniz?")) {
+      delayedEvents = [];
+      saveAll();
+      renderLists();
+    }
+  });
+
+  renderLists();
+
+  // Her 60 saniyede bir etkinlikleri kontrol et
+  setInterval(() => {
+    const now = new Date();
+    events.forEach(ev => {
+      const eventTime = new Date(ev.datetime);
+      // Etkinlik zamanı yaklaşmışsa (1 dakika önce)
+      if(eventTime - now <= 60000 && eventTime - now > 0) {
+        // Bildirim göster
+        if (Notification.permission === "granted") {
+          new Notification("Hatırlatma", {body: ev.title + " etkinliği birazdan başlayacak."});
+        } else {
+          alert(ev.title + " etkinliği birazdan başlayacak!");
+        }
+      }
+    });
+  }, 60000);
+</script>
+</body>
+</html>
